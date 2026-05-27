@@ -40,8 +40,8 @@ pip install -e ".[notebooks]"  # jupyter
 
 Additional documentation:
 
-- [Architecture](docs/architecture.md)
-- [Migration Guide](docs/migration.md)
+- [Status](docs/status.md)
+- [Roadmap](docs/roadmap.md)
 
 ## Tri-level Framework
 
