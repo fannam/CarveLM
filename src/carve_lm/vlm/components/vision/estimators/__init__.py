@@ -5,6 +5,7 @@ import warnings
 from ..core import ESTIMATOR_REGISTRY
 from .activation import ActivationEstimator
 from .magnitude import MagnitudeEstimator
+from .random import RandomEstimator
 from .similarity import BlockSimilarityEstimator, LayerSimilarityEstimator
 
 
@@ -38,6 +39,7 @@ __all__ = [
     "BlockSimilarityEstimator",
     "LayerSimilarityEstimator",
     "MagnitudeEstimator",
+    "RandomEstimator",
     "available_estimators",
     "create_estimator",
 ]

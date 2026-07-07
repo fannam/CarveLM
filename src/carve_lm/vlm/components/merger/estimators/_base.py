@@ -240,3 +240,44 @@ def _reduce_input_channel_scores(
             )
         )
     return scores.reshape(merge_factor, input_hidden_size).sum(dim=0)
+
+
+class _BaseMergerRandomEstimator(_BaseMergerEstimator):
+    """Random baseline importance for Qwen2.5-VL patch merger channels.
+
+    Produces reproducible random scores with the same shapes and keys as the
+    activation and magnitude estimators, for use as a pruning-quality baseline.
+    """
+
+    def __init__(
+        self,
+        model: nn.Module,
+        device: str = "cpu",
+        model_adapter: BaseMergerAdapter | str | None = None,
+        seed: int = 0,
+    ):
+        super().__init__(model=model, device=device, model_adapter=model_adapter)
+        self.seed = int(seed)
+
+    def _generator(self) -> torch.Generator:
+        generator = torch.Generator(device="cpu")
+        generator.manual_seed(self.seed)
+        return generator
+
+    def estimate_input_channels(self, agg: str = "l2") -> Dict[str, torch.Tensor]:
+        del agg
+        mergers = self.adapter.get_mergers(self.model)
+        input_hidden_size = self.adapter.input_hidden_size(self.model, mergers[0])
+        return {"merger_input_channels": torch.rand(input_hidden_size, generator=self._generator())}
+
+    def estimate_intermediate_channels(self, agg: str = "l2") -> Dict[str, torch.Tensor]:
+        del agg
+        mergers = self.adapter.get_mergers(self.model)
+        intermediate_size = self.adapter.get_projections(mergers[0]).fc1.out_features
+        return {"merger_intermediate_channels": torch.rand(intermediate_size, generator=self._generator())}
+
+    def estimate_output_channels(self, agg: str = "l2") -> Dict[str, torch.Tensor]:
+        del agg
+        mergers = self.adapter.get_mergers(self.model)
+        output_hidden_size = self.adapter.output_hidden_size(self.model, mergers[0])
+        return {"merger_output_channels": torch.rand(output_hidden_size, generator=self._generator())}

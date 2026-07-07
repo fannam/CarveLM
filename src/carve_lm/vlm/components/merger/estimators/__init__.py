@@ -5,6 +5,7 @@ import warnings
 from ..core import ESTIMATOR_REGISTRY
 from .activation import ActivationEstimator
 from .magnitude import MagnitudeEstimator
+from .random import RandomEstimator
 
 
 def create_estimator(name: str, *args, **kwargs):
@@ -35,6 +36,7 @@ def available_estimators(
 __all__ = [
     "ActivationEstimator",
     "MagnitudeEstimator",
+    "RandomEstimator",
     "available_estimators",
     "create_estimator",
 ]

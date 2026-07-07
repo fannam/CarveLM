@@ -124,6 +124,14 @@ class BaseModelAdapter(ABC):
     def get_layers(self, model: PreTrainedModel):
         raise NotImplementedError
 
+    def set_layers(self, model: PreTrainedModel, layers) -> None:
+        """Replace the decoder layer stack.
+
+        Standard HuggingFace decoders expose the stack at ``model.model.layers``.
+        Families with a different layout should override this.
+        """
+        model.model.layers = nn.ModuleList(list(layers))
+
     @abstractmethod
     def get_embed_tokens(self, model: PreTrainedModel) -> nn.Embedding:
         raise NotImplementedError
@@ -354,6 +362,16 @@ class BaseModelAdapter(ABC):
     def patch_num_hidden_layers(self, model: nn.Module, num_hidden_layers: int) -> None:
         self.ensure_supported(model)
         setattr(model.config, "num_hidden_layers", int(num_hidden_layers))
+
+    def uses_hidden_stream_channel_pruning(self, model: nn.Module | None = None) -> bool:
+        """Whether this family prunes the residual (hidden-stream) channel dimension.
+
+        Plain decoder LLMs prune width inside attention/MLP blocks, not the shared
+        residual stream, so this is ``False``. Multimodal decoders that expose a
+        prunable hidden stream override this to ``True``.
+        """
+        del model
+        return False
 
     def available_components(self, model: PreTrainedModel | None = None) -> tuple[str, ...]:
         components = set(self.supported_components)

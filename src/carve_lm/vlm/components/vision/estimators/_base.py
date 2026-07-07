@@ -501,3 +501,57 @@ class _BaseVisionSimilarityBlockEstimator(_BaseVisionEstimator):
             else 0.0
             for start_idx in range(max_start)
         ]
+
+
+class _BaseVisionRandomEstimator(_BaseVisionEstimator):
+    """Random baseline importance for Qwen-style vision transformer blocks.
+
+    Produces reproducible random scores with the same per-block shapes as the
+    activation and magnitude estimators, for use as a pruning-quality baseline.
+    """
+
+    def __init__(
+        self,
+        model: nn.Module,
+        device: str = "cpu",
+        model_adapter: BaseVisionAdapter | str | None = None,
+        seed: int = 0,
+    ):
+        super().__init__(model=model, device=device, model_adapter=model_adapter)
+        self.seed = int(seed)
+
+    def _generator(self) -> torch.Generator:
+        generator = torch.Generator(device="cpu")
+        generator.manual_seed(self.seed)
+        return generator
+
+    def estimate_attention_heads(self, agg: str = "l2") -> Dict[int, torch.Tensor]:
+        del agg
+        generator = self._generator()
+        importance_by_block = {}
+        for block_idx, block in enumerate(self.adapter.get_blocks(self.model)):
+            num_heads = self.adapter.num_attention_heads(self.model, block)
+            importance_by_block[block_idx] = torch.rand(num_heads, generator=generator)
+        return importance_by_block
+
+    def estimate_mlp_neurons(self, agg: str = "l2") -> Dict[int, torch.Tensor]:
+        del agg
+        generator = self._generator()
+        importance_by_block = {}
+        for block_idx, block in enumerate(self.adapter.get_blocks(self.model)):
+            mlp = self.adapter.get_mlp_projections(block)
+            _, output_projection = mlp.output_projection()
+            importance_by_block[block_idx] = torch.rand(output_projection.in_features, generator=generator)
+        return importance_by_block
+
+    def estimate_hidden_channels(self, agg: str = "l2") -> Dict[str, torch.Tensor]:
+        del agg
+        generator = self._generator()
+        importance_by_key = {}
+        for block_idx, block in enumerate(self.adapter.get_blocks(self.model)):
+            hidden_size = self.adapter.hidden_size(self.model, block)
+            importance_by_key["vision_block{}_hidden_channels".format(block_idx)] = torch.rand(
+                hidden_size,
+                generator=generator,
+            )
+        return importance_by_key

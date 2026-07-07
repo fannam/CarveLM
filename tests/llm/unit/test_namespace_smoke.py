@@ -82,11 +82,16 @@ def test_vlm_public_namespaces_smoke_import():
     assert available_vision_estimators() == (
         "activation.element",
         "magnitude.element",
+        "random.element",
         "similarity.block",
         "similarity.layer",
     )
     assert available_vision_pruners() == ("depth.layer", "width", "width.channel")
-    assert available_merger_estimators() == ("activation.element", "magnitude.element")
+    assert available_merger_estimators() == (
+        "activation.element",
+        "magnitude.element",
+        "random.element",
+    )
     assert available_merger_pruners() == ("width", "width.bridge")
 
 

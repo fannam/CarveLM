@@ -489,7 +489,7 @@ def test_masked_ot_loss_backpropagates_through_student_and_projector():
 
 
 def test_hybrid_ot_distiller_tracks_ot_history_and_logs_ot_loss(monkeypatch):
-    import carve_lm.llm.distillation.hybrid as hybrid_module
+    import carve_lm._distillation.hybrid as hybrid_module
 
     torch.manual_seed(0)
     teacher = TinyCausalLM(TinyConfig(hidden_size=8, num_hidden_layers=3, vocab_size=29))
