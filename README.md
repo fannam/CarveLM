@@ -35,13 +35,32 @@ pip install -e ".[notebooks]"  # jupyter
 | `carve_lm.vlm.components.merger.*` | Patch-merger adapters, estimators, and pruners for Qwen-style multimodal bridge modules. |
 | `carve_lm.llm.distillation` | LLM recovery helpers: `LogitsDistiller`, `HybridDistiller`, `HybridOTDistiller`, `TeacherCorrection` (requires `[train]`). |
 | `carve_lm.llm.evaluation` | Text-generation latency and throughput measurement via `LLMMeasurer`. |
+| `carve_lm.llm.auto_model` | Reload component-pruned LLMs. `PrunedAutoModelForCausalLM` replays the identity-passthrough attention/MLP sublayers recorded on the config after a normal HF load. |
 | `carve_lm.vlm.distillation` | VLM recovery helpers with multimodal batch forwarding for decoder-side distillation. |
 | `carve_lm.vlm.evaluation` | Multimodal generation latency and throughput measurement via `VLMMeasurer`. |
+| `carve_lm.vlm.auto_model` | Reload component-pruned VLMs. `PrunedVLMAutoModel` / `apply_component_pruning_from_config` restore the pruned language-decoder layout after a normal HF load. |
 
 Additional documentation:
 
 - [Status](docs/status.md)
 - [Roadmap](docs/roadmap.md)
+- [Deduplication & module plan](docs/dedup-plan.md)
+
+## Architecture
+
+The LLM and VLM stacks are thin, model-family-specific layers over two shared,
+model-agnostic cores:
+
+| Shared core | What it holds | How a domain plugs in |
+|-------------|---------------|-----------------------|
+| `carve_lm._pruning` | The whole structured-pruning engine — discovery, importance selection, executors, manifest/persistence, the width pruner, and the element pruning strategies. | Each domain re-exports the engine and injects its own **adapter resolver**, **estimator factory**, **strategy registry**, and **manifest filename** through class-level hooks. |
+| `carve_lm._distillation` | The recovery/distillation core — logits, hybrid feature, hybrid-OT, and teacher-correction distillers plus batch/loss helpers. | Each domain re-exports the distillers; only the multimodal data collator (`data.py`) stays domain-specific. |
+
+The upshot: pruning and distillation logic live in exactly one place, so a fix
+or feature reaches LLM and VLM at once. A model family is supported by writing
+an **adapter** (see below) — never by copying the engine. The batch helpers are
+written for the general (multimodal) case and degrade gracefully to plain
+text-only models, so the same code path serves both.
 
 ## Tri-level Framework
 
@@ -52,6 +71,33 @@ Pruning operates at three independent levels:
 | **Element** (L1) | Attention heads, GQA groups, MLP neurons, embedding channels | `WidthGroupPruner`, `WidthChannelPruner` | `activation.*`, `magnitude.*`, `taylor.*`, `random.*` |
 | **Layer** (L2) | Attention or MLP sublayer within a decoder block | `ComponentPruner` | `similarity.layer` |
 | **Block** (L3) | Contiguous decoder blocks | `DepthBlockPruner`, `DepthLayerPruner` | `similarity.block`, `perplexity.block` |
+
+### Registered estimators and pruners by component
+
+Names are the registry keys accepted by `create_estimator` / `create_pruner`
+(and the `EstimatorSpec` name). The decoder-side stacks (LLM and VLM language)
+are fully symmetric.
+
+| Component | Estimators | Pruners |
+|-----------|------------|---------|
+| `carve_lm.llm` (decoder) | `activation.element`, `magnitude.{element,group,channel}`, `taylor.group`, `random.group`, `similarity.{layer,block}`, `perplexity.{layer,block}` | `width`, `width.group`, `width.channel`, `component`, `depth.block`, `depth.layer` |
+| `carve_lm.vlm.components.language` (decoder) | same as LLM | same as LLM |
+| `carve_lm.vlm.components.vision` | `activation.element`, `magnitude.element`, `random.element`, `similarity.{layer,block}` | `width`, `width.channel`, `depth.layer` |
+| `carve_lm.vlm.components.merger` | `activation.element`, `magnitude.element`, `random.element` | `width`, `width.bridge` |
+
+Notes on estimator meaning:
+
+- **`activation.*`** — data-driven; runs the model over a calibration
+  `dataloader` and scores channels/heads by activation magnitude.
+- **`magnitude.*`** — data-free; scores from weight norms (`l1`/`l2`).
+- **`taylor.group`** — first/second-order salience from causal-LM loss gradients
+  (decoder-side only, where a task loss exists).
+- **`random.*`** — reproducible random baseline for measuring how much a real
+  estimator actually buys you.
+- **`similarity.layer` / `similarity.block`** — cosine distance between a
+  sublayer/block input and output; low change ⇒ safe to drop.
+- **`perplexity.layer` / `perplexity.block`** — perplexity increase when a
+  sublayer/block is replaced by identity; higher ⇒ more important.
 
 ## Supported Models
 
@@ -153,6 +199,44 @@ Structured block-wise attention groups are GQA-aware:
 Structured MLP groups are always coupled:
 
 - one `gate_proj` row + one `up_proj` row + one `down_proj` column
+
+## Reloading Pruned Models
+
+There are two persistence paths, matching the two ways a model can be pruned:
+
+**Width / block pruning changes tensor shapes.** Use the pruner's own
+`save_pruned` / `load_pruned`, which write a manifest plus the resized weights
+and rebuild the pruned architecture on load (see the Quick Start above).
+
+**Component (layer) pruning keeps shapes** — it swaps whole attention/MLP
+sublayers for identity pass-throughs and records their indices on the config.
+Such models save with the normal HuggingFace `save_pretrained`, and reload with
+a CarveLM auto-model that replays the identity layout:
+
+```python
+from carve_lm.llm.pruners import ComponentPruner
+from carve_lm.llm.auto_model import PrunedAutoModelForCausalLM
+
+pruned = ComponentPruner(model, device="cpu").prune(
+    importance_scores={"attention": attn_scores, "mlp": mlp_scores},
+    prune_counts={"attention": 2, "mlp": 2},
+)
+pruned.save_pretrained("artifacts/component")
+
+# Reload: attention/MLP layers recorded on the config become identity modules again.
+reloaded = PrunedAutoModelForCausalLM.from_pretrained("artifacts/component")
+```
+
+For multimodal models the analogous loader restores the pruned **language**
+decoder of a VLM:
+
+```python
+from carve_lm.vlm.auto_model import PrunedVLMAutoModel, apply_component_pruning_from_config
+
+reloaded = PrunedVLMAutoModel.from_pretrained("artifacts/vlm_component")
+# or, to replay onto an already-loaded model in place:
+apply_component_pruning_from_config(model, model_adapter="qwen2_5_vl")
+```
 
 ## Examples
 
