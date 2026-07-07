@@ -10,3 +10,8 @@ __pycache__/
 build/
 dist/
 .codex
+
+# Internal planning / status docs — not part of the published project docs
+docs/status.md
+docs/roadmap.md
+docs/dedup-plan.md

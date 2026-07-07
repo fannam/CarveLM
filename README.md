@@ -40,12 +40,6 @@ pip install -e ".[notebooks]"  # jupyter
 | `carve_lm.vlm.evaluation` | Multimodal generation latency and throughput measurement via `VLMMeasurer`. |
 | `carve_lm.vlm.auto_model` | Reload component-pruned VLMs. `PrunedVLMAutoModel` / `apply_component_pruning_from_config` restore the pruned language-decoder layout after a normal HF load. |
 
-Additional documentation:
-
-- [Status](docs/status.md)
-- [Roadmap](docs/roadmap.md)
-- [Deduplication & module plan](docs/dedup-plan.md)
-
 ## Architecture
 
 The LLM and VLM stacks are thin, model-family-specific layers over two shared,
