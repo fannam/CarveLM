@@ -7,7 +7,6 @@ __all__ = [
     "HybridOTDistiller",
     "LogitsDistiller",
     "OTConfig",
-    "TeacherCorrection",
     "create_distillation_dataloader",
 ]
 
@@ -45,7 +44,7 @@ def __getattr__(name: str):
             from .teacher_correction import TeacherCorrection
         except ModuleNotFoundError as exc:
             raise ModuleNotFoundError(
-                "TeacherCorrection requires the optional training dependencies. "
+                "SupervisedFineTuner requires optional training dependencies. "
                 "Install the `train` extra to use it."
             ) from exc
 

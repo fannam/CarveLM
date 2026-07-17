@@ -13,7 +13,7 @@ import pytest
         "examples.evaluation.measure_latency",
         "scripts.recovery.finetune_llama",
         "scripts.recovery.finetune_qwen",
-        "scripts.recovery.teacher_correction_accelerate",
+        "scripts.recovery.supervised_finetune_accelerate",
         "scripts.validation.validate_real_qwen_vlm",
     ],
 )

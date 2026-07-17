@@ -550,10 +550,10 @@ def test_hybrid_ot_distiller_tracks_ot_history_and_logs_ot_loss(monkeypatch):
     assert any("ot_loss" in payload for payload in logged_payloads if "train_loss" in payload)
 
 
-def test_teacher_correction_save_model_persists_tokenizer(tmp_path):
+def test_supervised_finetuner_save_model_persists_tokenizer(tmp_path):
     pytest.importorskip("accelerate")
 
-    from carve_lm.llm.distillation import TeacherCorrection
+    from carve_lm.llm.finetuning import SupervisedFineTuner
 
     model = TinyCausalLM(TinyConfig(hidden_size=8, num_hidden_layers=2, vocab_size=19))
     optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
@@ -562,7 +562,7 @@ def test_teacher_correction_save_model_persists_tokenizer(tmp_path):
     tokenizer = DummyTokenizer()
     batch = make_batch(0, vocab_size=19, padded=True)
 
-    trainer = TeacherCorrection(
+    trainer = SupervisedFineTuner(
         model=model,
         train_loader=[batch],
         val_loader=[batch],

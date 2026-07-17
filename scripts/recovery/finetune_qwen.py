@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import os
 
-WANDB_PROJECT = "teacher_correction_wikitext"
+WANDB_PROJECT = "supervised_finetune_wikitext"
 MODEL_NAME = "TheGardener/Qwen2.5-0.33B-base"
 DATASET_NAME = "EleutherAI/wikitext_document_level"
 DATASET_CONFIG = "wikitext-103-raw-v1"

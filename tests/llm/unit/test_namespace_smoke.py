@@ -158,17 +158,19 @@ def test_llm_factories_resolve_legacy_aliases_with_warnings():
     assert pruner is not None
 
 
-def test_llm_teacher_correction_namespace_smoke_import():
+def test_llm_supervised_finetuner_namespace_smoke_import():
     pytest.importorskip("accelerate")
 
-    from carve_lm.llm.distillation import TeacherCorrection
+    from carve_lm.llm.finetuning import LoRAFineTuner, SupervisedFineTuner
 
-    assert TeacherCorrection is not None
+    assert LoRAFineTuner is not None
+    assert SupervisedFineTuner is not None
 
 
-def test_vlm_teacher_correction_namespace_smoke_import():
+def test_vlm_supervised_finetuner_namespace_smoke_import():
     pytest.importorskip("accelerate")
 
-    from carve_lm.vlm.distillation import TeacherCorrection
+    from carve_lm.vlm.finetuning import LoRAFineTuner, SupervisedFineTuner
 
-    assert TeacherCorrection is not None
+    assert LoRAFineTuner is not None
+    assert SupervisedFineTuner is not None

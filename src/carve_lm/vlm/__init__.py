@@ -7,6 +7,7 @@ __all__ = [
     "components",
     "distillation",
     "evaluation",
+    "finetuning",
 ]
 
 

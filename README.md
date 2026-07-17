@@ -15,7 +15,7 @@ pip install -e .
 Optional extras:
 
 ```bash
-pip install -e ".[train]"      # accelerate, datasets, wandb — recovery workflows
+pip install -e ".[train]"      # accelerate, datasets, PEFT, wandb — recovery workflows
 pip install -e ".[dev]"        # pytest, ruff, build, twine
 pip install -e ".[notebooks]"  # jupyter
 ```
@@ -33,10 +33,12 @@ pip install -e ".[notebooks]"  # jupyter
 | `carve_lm.vlm.components.language.pruners` | Tri-level VLM pruners for decoder-side pruning on the language component. |
 | `carve_lm.vlm.components.vision.*` | Vision-component adapters, estimators, and pruners for Qwen-style visual transformers. |
 | `carve_lm.vlm.components.merger.*` | Patch-merger adapters, estimators, and pruners for Qwen-style multimodal bridge modules. |
-| `carve_lm.llm.distillation` | LLM recovery helpers: `LogitsDistiller`, `HybridDistiller`, `HybridOTDistiller`, `TeacherCorrection` (requires `[train]`). |
+| `carve_lm.llm.distillation` | LLM knowledge-distillation helpers: `LogitsDistiller`, `HybridDistiller`, and `HybridOTDistiller`. |
+| `carve_lm.llm.finetuning` | LLM training helpers: `SupervisedFineTuner` and `LoRAFineTuner` (requires `[train]`). |
 | `carve_lm.llm.evaluation` | Text-generation latency and throughput measurement via `LLMMeasurer`. |
 | `carve_lm.llm.auto_model` | Reload component-pruned LLMs. `PrunedAutoModelForCausalLM` replays the identity-passthrough attention/MLP sublayers recorded on the config after a normal HF load. |
 | `carve_lm.vlm.distillation` | VLM recovery helpers with multimodal batch forwarding for decoder-side distillation. |
+| `carve_lm.vlm.finetuning` | VLM training helpers: `SupervisedFineTuner` and `LoRAFineTuner` (requires `[train]`). |
 | `carve_lm.vlm.evaluation` | Multimodal generation latency and throughput measurement via `VLMMeasurer`. |
 | `carve_lm.vlm.auto_model` | Reload component-pruned VLMs. `PrunedVLMAutoModel` / `apply_component_pruning_from_config` restore the pruned language-decoder layout after a normal HF load. |
 
@@ -48,13 +50,51 @@ model-agnostic cores:
 | Shared core | What it holds | How a domain plugs in |
 |-------------|---------------|-----------------------|
 | `carve_lm._pruning` | The whole structured-pruning engine — discovery, importance selection, executors, manifest/persistence, the width pruner, and the element pruning strategies. | Each domain re-exports the engine and injects its own **adapter resolver**, **estimator factory**, **strategy registry**, and **manifest filename** through class-level hooks. |
-| `carve_lm._distillation` | The recovery/distillation core — logits, hybrid feature, hybrid-OT, and teacher-correction distillers plus batch/loss helpers. | Each domain re-exports the distillers; only the multimodal data collator (`data.py`) stays domain-specific. |
+| `carve_lm._distillation` | The knowledge-distillation core — logits, hybrid feature, hybrid-OT distillers, and batch/loss helpers. | Each domain re-exports the distillers; only the multimodal data collator (`data.py`) stays domain-specific. |
+| `carve_lm._finetuning` | Training core — supervised fine-tuning and PEFT LoRA adapter training. | LLM and VLM namespaces re-export the same trainers. |
 
-The upshot: pruning and distillation logic live in exactly one place, so a fix
-or feature reaches LLM and VLM at once. A model family is supported by writing
+The upshot: pruning, knowledge-distillation, and supervised fine-tuning logic
+live in exactly one place, so a fix or feature reaches LLM and VLM at once. A model family is supported by writing
 an **adapter** (see below) — never by copying the engine. The batch helpers are
 written for the general (multimodal) case and degrade gracefully to plain
 text-only models, so the same code path serves both.
+
+`SupervisedFineTuner` optimizes the model's loss from dataset `labels`; it does
+not use a teacher model. Teacher/student loss matching belongs to the
+`*.distillation` namespaces.
+
+## LoRA Fine-Tuning
+
+`LoRAFineTuner` applies a PEFT `LoraConfig` before using the same supervised
+training loop as `SupervisedFineTuner`. Only LoRA adapters are trainable and
+`save_model` writes adapter weights plus their PEFT config.
+
+```python
+from peft import LoraConfig, TaskType
+
+from carve_lm.llm.finetuning import LoRAFineTuner
+
+lora_config = LoraConfig(
+    task_type=TaskType.CAUSAL_LM,
+    r=8,
+    lora_alpha=16,
+    lora_dropout=0.05,
+    target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+)
+trainer = LoRAFineTuner(
+    model=model,
+    lora_config=lora_config,
+    train_loader=train_loader,
+    val_loader=eval_loader,
+    tokenizer=tokenizer,
+    config={"num_epochs": 3, "learning_rate": 2e-4},
+)
+trainer.train()
+trainer.save_model("artifacts/lora")
+```
+
+Choose `target_modules` for model architecture. Same API is available from
+`carve_lm.vlm.finetuning` for PEFT-supported VLMs.
 
 ## Tri-level Framework
 
@@ -240,11 +280,11 @@ apply_component_pruning_from_config(model, model_adapter="qwen2_5_vl")
 
 ## Recovery Scripts
 
-Post-pruning fine-tuning and knowledge distillation scripts live under `scripts/recovery/`:
+Post-pruning supervised fine-tuning and knowledge-distillation scripts live under `scripts/recovery/`:
 
 - `finetune_llama.py` — SFT fine-tuning for Llama models
 - `finetune_qwen.py` — SFT fine-tuning for Qwen models
-- `teacher_correction_accelerate.py` — Teacher-correction distillation with Accelerate
+- `supervised_finetune_accelerate.py` — supervised fine-tuning with Accelerate
 
 ## Development
 
