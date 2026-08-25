@@ -4,7 +4,6 @@ import math
 from pathlib import Path
 
 import torch
-from accelerate import Accelerator
 from torch.optim import AdamW
 from tqdm.auto import tqdm
 from transformers import get_cosine_schedule_with_warmup
@@ -32,6 +31,13 @@ class SupervisedFineTuner:
         self._tracking_enabled = bool(self.config.get("wandb_project"))
 
         if accelerator is None:
+            try:
+                from accelerate import Accelerator
+            except ModuleNotFoundError as exc:
+                raise ModuleNotFoundError(
+                    "SupervisedFineTuner requires accelerate. Install the `train` extra: pip install -e '.[train]'."
+                ) from exc
+
             self.accelerator = Accelerator(
                 gradient_accumulation_steps=self.config.get("gradient_accumulation_steps", 8),
                 log_with="wandb" if self._tracking_enabled else None,
