@@ -8,6 +8,7 @@ __all__ = [
     "distillation",
     "evaluation",
     "finetuning",
+    "quantization",
 ]
 
 

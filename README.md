@@ -35,6 +35,8 @@ pip install -e ".[notebooks]"  # jupyter
 | `carve_lm.vlm.components.merger.*` | Patch-merger adapters, estimators, and pruners for Qwen-style multimodal bridge modules. |
 | `carve_lm.llm.distillation` | LLM knowledge-distillation helpers: `LogitsDistiller`, `HybridDistiller`, and `HybridOTDistiller`. |
 | `carve_lm.llm.finetuning` | LLM training helpers: `SupervisedFineTuner` and `LoRAFineTuner` (requires `[train]`). |
+| `carve_lm.llm.quantization` | LLM post-training quantization helpers: RTN (INT8/INT4 packed), SmoothQuant (W8A8), GPTQ, and AWQ. |
+| `carve_lm.vlm.quantization` | VLM post-training quantization helpers with component-level targeting (`language`, `vision`, `merger`). |
 | `carve_lm.llm.evaluation` | Text-generation latency and throughput measurement via `LLMMeasurer`. |
 | `carve_lm.llm.auto_model` | Reload component-pruned LLMs. `PrunedAutoModelForCausalLM` replays the identity-passthrough attention/MLP sublayers recorded on the config after a normal HF load. |
 | `carve_lm.vlm.distillation` | VLM recovery helpers with multimodal batch forwarding for decoder-side distillation. |
@@ -44,12 +46,13 @@ pip install -e ".[notebooks]"  # jupyter
 
 ## Architecture
 
-The LLM and VLM stacks are thin, model-family-specific layers over two shared,
+The LLM and VLM stacks are thin, model-family-specific layers over shared,
 model-agnostic cores:
 
 | Shared core | What it holds | How a domain plugs in |
 |-------------|---------------|-----------------------|
 | `carve_lm._pruning` | The whole structured-pruning engine — discovery, importance selection, executors, manifest/persistence, the width pruner, and the element pruning strategies. | Each domain re-exports the engine and injects its own **adapter resolver**, **estimator factory**, **strategy registry**, and **manifest filename** through class-level hooks. |
+| `carve_lm._quantization` | Model quantization engine — pure PyTorch INT8/INT4 packed layers (`QuantizedLinear`), RTN, SmoothQuant (W8A8), GPTQ, and quantization manifests. | LLM and VLM namespaces re-export quantizers with domain-appropriate module defaults and component filtering. |
 | `carve_lm._distillation` | The knowledge-distillation core — logits, hybrid feature, hybrid-OT distillers, and batch/loss helpers. | Each domain re-exports the distillers; only the multimodal data collator (`data.py`) stays domain-specific. |
 | `carve_lm._finetuning` | Training core — supervised fine-tuning and PEFT LoRA adapter training. | LLM and VLM namespaces re-export the same trainers. |
 
@@ -95,6 +98,42 @@ trainer.save_model("artifacts/lora")
 
 Choose `target_modules` for model architecture. Same API is available from
 `carve_lm.vlm.finetuning` for PEFT-supported VLMs.
+
+## Post-Training Quantization
+
+CarveLM provides pure PyTorch post-training quantization supporting weight-only and weight-activation precision:
+
+- **RTN (Round-To-Nearest)**: Data-free weight-only quantization (INT8 and packed INT4) with per-channel or per-group scaling.
+- **SmoothQuant (W8A8)**: Data-driven activation-weight smoothing to handle activation outliers for 8-bit inference.
+- **GPTQ**: Second-order Hessian error compensation for accurate low-bit weight quantization.
+- **AWQ (Activation-aware Weight Quantization)**: Salient weight protection via per-channel activation grid search for low-bit quantization.
+
+```python
+from transformers import AutoModelForCausalLM
+from carve_lm.llm.quantization import (
+    WeightQuantConfig,
+    quantize_llm,
+    save_quantized,
+    load_quantized,
+)
+
+model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.2-1B")
+
+# Quantize linear layers to 4-bit packed weights with per-group scaling
+config = WeightQuantConfig(
+    bits=4,
+    granularity="per_group",
+    group_size=128,
+    pack_weights=True,
+)
+quantized_model, result = quantize_llm(model, config=config)
+
+# Save and reload quantized models
+save_quantized(quantized_model, "artifacts/llama_int4", config=config, result=result)
+reloaded = load_quantized("artifacts/llama_int4", base_model=model)
+```
+
+For multimodal models, `carve_lm.vlm.quantization.quantize_vlm` supports component-level selection (`language`, `vision`, `merger`).
 
 ## Tri-level Framework
 

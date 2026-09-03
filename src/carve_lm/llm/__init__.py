@@ -11,6 +11,7 @@ __all__ = [
     "evaluation",
     "finetuning",
     "pruners",
+    "quantization",
 ]
 
 
